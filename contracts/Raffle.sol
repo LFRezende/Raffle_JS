@@ -23,7 +23,11 @@ contract Raffle is VRFConsumerBaseV2 {
     VRFCoordinatorV2Interface private immutable i_vrfCoordinator; // private because it doesn't matter
     uint256 private immutable i_entranceFee; // Won't be changed afterwards -  immutable (saves Gas)
     bytes32 private immutable i_gasLane; // Or keyhash - the most u r willing to pay for randomNumber.
-
+    uint64 private immutable i_subscriptionId; // Account on Chainlink VRF
+    uint32 private immutable i_callbackGasLimit; // Max gas we'll afford on the fulfillRandomness function.
+    // Also, it is uint32 just to match the requestRandomness input requirements of the VRFConsumerBaseV2.
+    uint16 private constant REQUEST_CONFIRMATIONS = 3; // Ammount of blockConfirmations ur willing to wait.
+    uint32 private constant NUM_WORDS = 1; // Number of randomnumbers we wish to call.
     // Events of the Contract
     event raffleEnter(address indexed player); // indexed =-
 
@@ -31,10 +35,14 @@ contract Raffle is VRFConsumerBaseV2 {
         address vrfCoordinatorAddress,
         uint256 entranceFee,
         bytes32 gasLane,
+        uint64 subscriptionId,
+        uint32 callbackGasLimit
     ) VRFConsumerBaseV2(vrfCoordinatorAddress) {
         i_entranceFee = entranceFee;
         i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinatorAddress);
         i_gasLane = gasLane;
+        i_subscriptionId = subscriptionId;
+        i_callbackGasLimit = callbackGasLimit;
     }
 
     function enterRaffle() public payable {
@@ -52,10 +60,10 @@ contract Raffle is VRFConsumerBaseV2 {
         // 2 tx;
         i_vrfCoordinator.requestRandomWords(
             i_gasLane, // maximum amount of gas we are willing to pay for the random number
-            s_subscriptionId,
-            requestConfirmations,
-            callbackGasLimit,
-            numWords
+            i_subscriptionId, // your subscription ID, on chainlink VRF, to fund ans request
+            REQUEST_CONFIRMATIONS,
+            i_callbackGasLimit,
+            NUM_WORDS
         );
     }
 
