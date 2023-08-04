@@ -2,14 +2,39 @@
 
 pragma solidity ^0.8.7;
 
-error Raffle__NotEnoughETHEntered();
+// npm install hardhat-compile / yarn global add --dev hardhat-compile
+// it allows for npx hh compile (windows) and hh compile (macOs, Linux).
 
-contract Raffle {
+// Remember to yarn add --dev @chainlink/contracts for it to be recognized
+// If yarn doesn't work: npm install @chainlink/contracts!
+
+import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+
+// To interact with the contract of the VRFCooordinator, we must grab its interface, so we can
+// pass to it the address of the contract we wish to access/work with, and then we wrap it into a
+// variable.
+import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+error Raffle__NotEnoughETHEntered(); // Error msg is better than storing strings
+
+contract Raffle is VRFConsumerBaseV2 {
+    // Global Variables
+
     address payable[] private s_players;
-    uint256 private immutable i_entranceFee; // Won't be changed afterwards -  immutable
+    VRFCoordinatorV2Interface private immutable i_vrfCoordinator; // private because it doesn't matter
+    uint256 private immutable i_entranceFee; // Won't be changed afterwards -  immutable (saves Gas)
+    bytes32 private immutable i_gasLane; // Or keyhash - the most u r willing to pay for randomNumber.
 
-    constructor(uint256 entranceFee) {
+    // Events of the Contract
+    event raffleEnter(address indexed player); // indexed =-
+
+    constructor(
+        address vrfCoordinatorAddress,
+        uint256 entranceFee,
+        bytes32 gasLane,
+    ) VRFConsumerBaseV2(vrfCoordinatorAddress) {
         i_entranceFee = entranceFee;
+        i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinatorAddress);
+        i_gasLane = gasLane;
     }
 
     function enterRaffle() public payable {
@@ -17,7 +42,29 @@ contract Raffle {
             revert Raffle__NotEnoughETHEntered();
         }
         s_players.push(payable(msg.sender));
+        emit raffleEnter(msg.sender);
     }
+
+    function requestRandomWinner() external {
+        // External function less gas
+        // Request random
+        // Do something
+        // 2 tx;
+        i_vrfCoordinator.requestRandomWords(
+            i_gasLane, // maximum amount of gas we are willing to pay for the random number
+            s_subscriptionId,
+            requestConfirmations,
+            callbackGasLimit,
+            numWords
+        );
+    }
+
+    // Function that the VRFCNode will call, and needs to be overridden;
+    // it needs 2 parameters as an input (requestId and the randomNumbers, returned in array).
+    function fulfillRandomWords(
+        uint256 requestId,
+        uint256[] memory randomWords
+    ) internal override {}
 
     function getEntranceFee() public view returns (uint256) {
         return i_entranceFee;
