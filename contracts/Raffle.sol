@@ -26,18 +26,21 @@ contract Raffle is VRFConsumerBaseV2 {
     uint64 private immutable i_subscriptionId; // Account on Chainlink VRF
     uint32 private immutable i_callbackGasLimit; // Max gas we'll afford on the fulfillRandomness function.
     // Also, it is uint32 just to match the requestRandomness input requirements of the VRFConsumerBaseV2.
+    /*
+        requestRandomness function requires uint32 due to  VRFConsumerBaseV2
+     */
     uint16 private constant REQUEST_CONFIRMATIONS = 3; // Ammount of blockConfirmations ur willing to wait.
     uint32 private constant NUM_WORDS = 1; // Number of randomnumbers we wish to call.
     // Events of the Contract
-    event raffleEnter(address indexed player); // indexed =-
+    event raffleEnter(address indexed player); // indexed = event indexed is easier to query (less gas)
 
     constructor(
         address vrfCoordinatorAddress,
         uint256 entranceFee,
-        bytes32 gasLane,
+        bytes32 gasLane, // equal to keyHash
         uint64 subscriptionId,
         uint32 callbackGasLimit
-    ) VRFConsumerBaseV2(vrfCoordinatorAddress) {
+    ) VRFConsumerBaseV2(vrfCoordinatorAddress) { // inherits the constructor since it inherits the functions of VRFConsumerBaseV2
         i_entranceFee = entranceFee;
         i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinatorAddress);
         i_gasLane = gasLane;
