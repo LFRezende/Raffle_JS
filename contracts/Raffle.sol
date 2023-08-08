@@ -14,9 +14,22 @@ import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 // pass to it the address of the contract we wish to access/work with, and then we wrap it into a
 // variable.
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
-error Raffle__NotEnoughETHEntered(); // Error msg is better than storing strings
 
-contract Raffle is VRFConsumerBaseV2 {
+// Now, let's import the interface for Keepers, which will allow us to interact
+// with checkUpkeep and performUpkeep
+import "@chainlink/contracts/src/v0.8/interfaces/KeeperCompatibleInterface.sol";
+
+error Raffle__NotEnoughETHEntered(); // Error msg is better than storing strings
+error Raffle__TransferFailed();
+error Raffle__NotOpen();
+
+abstract contract Raffle is VRFConsumerBaseV2, KeeperCompatibleInterface {
+    // ENUMS
+
+    enum raffleState {
+        OPEN,
+        CALCULATING
+    }
     // Global Variables
 
     address payable[] private s_players;
@@ -31,8 +44,13 @@ contract Raffle is VRFConsumerBaseV2 {
      */
     uint16 private constant REQUEST_CONFIRMATIONS = 3; // Ammount of blockConfirmations ur willing to wait.
     uint32 private constant NUM_WORDS = 1; // Number of randomnumbers we wish to call.
+    // Lottery Variables
+    address private s_recentWinner;
+    raffleState private s_raffleState;
     // Events of the Contract
     event raffleEnter(address indexed player); // indexed = event indexed is easier to query (less gas)
+    event requestedRaffleWinner(uint256 indexed requestId);
+    event winnerPicked(address indexed winner);
 
     constructor(
         address vrfCoordinatorAddress,
@@ -40,17 +58,22 @@ contract Raffle is VRFConsumerBaseV2 {
         bytes32 gasLane, // equal to keyHash
         uint64 subscriptionId,
         uint32 callbackGasLimit
-    ) VRFConsumerBaseV2(vrfCoordinatorAddress) { // inherits the constructor since it inherits the functions of VRFConsumerBaseV2
+    ) VRFConsumerBaseV2(vrfCoordinatorAddress) {
+        // inherits the constructor since it inherits the functions of VRFConsumerBaseV2
         i_entranceFee = entranceFee;
         i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinatorAddress);
         i_gasLane = gasLane;
         i_subscriptionId = subscriptionId;
         i_callbackGasLimit = callbackGasLimit;
+        s_raffleState = raffleState.OPEN;
     }
 
     function enterRaffle() public payable {
         if (msg.value < i_entranceFee) {
             revert Raffle__NotEnoughETHEntered();
+        }
+        if (s_raffleState != raffleState.OPEN) {
+            revert Raffle__NotOpen();
         }
         s_players.push(payable(msg.sender));
         emit raffleEnter(msg.sender);
@@ -73,9 +96,30 @@ contract Raffle is VRFConsumerBaseV2 {
     // Function that the VRFCNode will call, and needs to be overridden;
     // it needs 2 parameters as an input (requestId and the randomNumbers, returned in array).
     function fulfillRandomWords(
-        uint256 requestId,
+        uint256 /* In sol, you can just pass the type for not using it */,
         uint256[] memory randomWords
-    ) internal override {}
+    ) internal override {
+        uint256 indexOfWinner = randomWords[0] % s_players.length;
+        address payable recentWinner = s_players[indexOfWinner];
+        s_recentWinner = recentWinner;
+        (bool success, ) = recentWinner.call{value: address(this).balance}("");
+        if (!success) {
+            revert Raffle__TransferFailed();
+        }
+        emit winnerPicked(recentWinner);
+    }
+
+    /**
+     * @dev Function for CHainlink Keepers Node call.
+     * 1. Time must pass the deadline
+     * 2. At least 1 player and with some ETH
+     * 3. Subscriptio with LINK
+     * 4. Must be open
+     */
+
+    function checkUpkeep(
+        bytes calldata /*checkData*/
+    ) external override returns (bool upkeepNeeded, bytes memory performData) {}
 
     function getEntranceFee() public view returns (uint256) {
         return i_entranceFee;
@@ -83,5 +127,9 @@ contract Raffle is VRFConsumerBaseV2 {
 
     function getPlayer(uint256 index) public view returns (address) {
         return s_players[index];
+    }
+
+    function getRecentWinner() public view returns (address) {
+        return s_recentWinner;
     }
 }
